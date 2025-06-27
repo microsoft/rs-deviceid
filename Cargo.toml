@@ -1,0 +1,16 @@
+[package]
+name = "deviceid"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.219", optional = true, features = ["serde_derive"] }
+thiserror = "2.0.12"
+uuid = { version = "1.17.0", features = ["v4"] }
+
+[target.'cfg(target_family = "windows")'.dependencies]
+winreg = "0.55.0"
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "uuid/serde"]
