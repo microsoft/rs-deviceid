@@ -17,9 +17,6 @@
 //!
 //! **Note**: This crate assumes that the device ID is unlikely to be stored by multiple applications at once,
 //! so it does not go to great lengths to ensure that it does not overwrite an existing ID.
-//! If two applications try to generate a new ID at the same time, one of the writes will win, but both applications may
-//! think that they have generated a correct ID. This is not a problem in practice as at most a limited number of application runs
-//! will see an incorrect ID, and future runs of this and other apps will retrieve the correct ID from storage.
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -63,14 +60,14 @@ fn generate_id() -> DevDeviceId {
 impl DevDeviceId {
     /// Retrieves the device ID from storage or generates a new one if it doesn't exist.
     /// If an ID does not exist, a new one is generated and stored.
-    /// If the function does not return `Ok(device_id)`, the generate ID was not stored.
+    /// If the function does not return `Ok(device_id)`, the generated ID was not stored.
     pub fn get_or_generate() -> Result<Self> {
         match storage::retrieve()? {
             Some(id) => Ok(id),
             None => {
                 let id = generate_id();
                 storage::store(&id)?;
-                Ok(id)
+                Ok(storage::retrieve()?.unwrap_or(id))
             }
         }
     }
