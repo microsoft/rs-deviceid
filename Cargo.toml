@@ -2,6 +2,11 @@
 name = "deviceid"
 version = "0.0.1"
 edition = "2024"
+license = "MIT"
+description = "This package is used to help generate a unique random UUID as a deviceId."
+repository = "https://github.com/Microsoft/rs-deviceid"
+readme = "README.md"
+keywords = ["deviceid", "uuid", "devDeviceId", "telemetry"]
 
 [dependencies]
 serde = { version = "1.0.219", optional = true, features = ["serde_derive"] }
