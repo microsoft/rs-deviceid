@@ -100,4 +100,13 @@ mod tests {
         let expected = String::from_utf8(buf).expect("Failed to convert to String");
         assert_eq!(formatted, expected);
     }
+
+    #[test]
+    fn test_get_or_generate_idempotent() {
+        let id = DevDeviceId::get_or_generate().unwrap();
+        let id2 = DevDeviceId::get_or_generate().unwrap();
+        assert_eq!(id, id2);
+        let id3 = DevDeviceId::get().unwrap().unwrap();
+        assert_eq!(id, id3);
+    }
 }

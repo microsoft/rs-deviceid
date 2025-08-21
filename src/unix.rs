@@ -68,7 +68,7 @@ pub fn store(id: &DevDeviceId) -> Result<()> {
     std::fs::create_dir_all(folder_path()?)
         .map_err(|e| super::Error::StorageError(e.to_string()))?;
     if !path()?.exists() {
-        let id_str = format!("{}", id);
+        let id_str = format!("{id}");
         std::fs::write(path()?, id_str.as_bytes())
             .map_err(|e| super::Error::StorageError(e.to_string()))?;
         Ok(())
