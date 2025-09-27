@@ -1,6 +1,6 @@
 [package]
 name = "deviceid"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 license = "MIT"
 description = "This package is used to help generate a unique random UUID as a deviceId."
