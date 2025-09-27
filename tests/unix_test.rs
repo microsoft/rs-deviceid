@@ -6,6 +6,9 @@ use std::path::PathBuf;
 fn test_get_or_generate_first_time() {
     // set HOME to a temporary directory
     let tmp_home = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("fake_home");
+    if tmp_home.exists() {
+        let _ = std::fs::remove_dir_all(&tmp_home);
+    }
     println!("Using tmp home: {}", tmp_home.display());
     std::fs::create_dir_all(&tmp_home).unwrap();
     unsafe { std::env::set_var("HOME", tmp_home) }
