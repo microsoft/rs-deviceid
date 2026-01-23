@@ -5,7 +5,7 @@
 
 ## Tech Stack
 - **Language**: Rust (Edition 2024)
-- **Minimum Rust Version**: 1.92.0
+- **Minimum Rust Version**: 1.88
 - **Key Dependencies**:
   - `uuid` (v1.18) - for generating v4 UUIDs
   - `serde` (v1.0) - optional, for serialization support
