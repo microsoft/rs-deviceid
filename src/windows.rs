@@ -144,7 +144,8 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    RealWindowsRegistry.store(id)
+    let mut storage = RealWindowsRegistry;
+    storage.store(id)
 }
 
 #[cfg(test)]

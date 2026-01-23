@@ -87,5 +87,6 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    UnixStorage.store(id)
+    let mut storage = UnixStorage;
+    storage.store(id)
 }
