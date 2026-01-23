@@ -87,7 +87,8 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
     if path.exists() {
         let data = std::fs::read(path)
             .map_err(|e| super::Error::StorageError(e.to_string()))?;
-        // Unix: try_parse_ascii for raw byte data from files
+        // Unix: Reads file as bytes, parses ASCII representation of UUID
+        // File contains UUID string like "550e8400-e29b-41d4-a716-446655440000"
         let id = uuid::Uuid::try_parse_ascii(data.as_slice())
             .map_err(|e| super::Error::BadUuidFormat(e.to_string()))?;
         Ok(Some(DevDeviceId(id)))
