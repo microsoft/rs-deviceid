@@ -68,7 +68,7 @@ impl Storage for UnixStorage {
         }
     }
 
-    fn store(&mut self, id: &DevDeviceId) -> Result<()> {
+    fn store(&self, id: &DevDeviceId) -> Result<()> {
         std::fs::create_dir_all(folder_path()?)
             .map_err(|e| super::Error::StorageError(e.to_string()))?;
         if !path()?.exists() {
@@ -87,6 +87,5 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    let mut storage = UnixStorage;
-    storage.store(id)
+    UnixStorage.store(id)
 }

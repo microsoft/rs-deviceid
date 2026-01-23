@@ -36,7 +36,7 @@ pub trait Storage {
     fn retrieve(&self) -> Result<Option<DevDeviceId>>;
 
     /// Stores a device ID to storage
-    fn store(&mut self, id: &DevDeviceId) -> Result<()>;
+    fn store(&self, id: &DevDeviceId) -> Result<()>;
 }
 
 mod storage {
@@ -72,7 +72,7 @@ pub fn get_impl<S: Storage>(storage: &S) -> Result<Option<DevDeviceId>> {
 }
 
 /// Implementation of get_or_generate using a Storage trait object
-pub fn get_or_generate_impl<S: Storage>(storage: &mut S) -> Result<DevDeviceId> {
+pub fn get_or_generate_impl<S: Storage>(storage: &S) -> Result<DevDeviceId> {
     match storage.retrieve()? {
         Some(id) => Ok(id),
         None => {

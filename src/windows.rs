@@ -79,7 +79,7 @@ impl Storage for RealWindowsRegistry {
         retrieve_with_registry(self)
     }
 
-    fn store(&mut self, id: &DevDeviceId) -> Result<()> {
+    fn store(&self, id: &DevDeviceId) -> Result<()> {
         store_with_registry(self, id)
     }
 }
@@ -134,7 +134,7 @@ impl Storage for MockWindowsRegistry {
         retrieve_with_registry(self)
     }
 
-    fn store(&mut self, id: &DevDeviceId) -> Result<()> {
+    fn store(&self, id: &DevDeviceId) -> Result<()> {
         store_with_registry(self, id)
     }
 }
@@ -144,8 +144,7 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    let mut storage = RealWindowsRegistry;
-    storage.store(id)
+    RealWindowsRegistry.store(id)
 }
 
 #[cfg(test)]
@@ -171,7 +170,7 @@ mod tests {
 
     #[test]
     fn test_store_and_retrieve() {
-        let mut registry = MockWindowsRegistry::new();
+        let registry = MockWindowsRegistry::new();
         let id = DevDeviceId(uuid::Uuid::new_v4());
 
         registry.store(&id).unwrap();
@@ -183,14 +182,14 @@ mod tests {
 
     #[test]
     fn test_get_or_generate_with_empty_registry() {
-        let mut registry = MockWindowsRegistry::new();
+        let registry = MockWindowsRegistry::new();
 
         // First call should return None (empty registry)
         let initial = crate::get_impl(&registry).unwrap();
         assert!(initial.is_none());
 
         // get_or_generate should create and store a new ID
-        let generated = crate::get_or_generate_impl(&mut registry).unwrap();
+        let generated = crate::get_or_generate_impl(&registry).unwrap();
 
         // Second call should return the stored ID
         let retrieved = crate::get_impl(&registry).unwrap();
@@ -201,10 +200,10 @@ mod tests {
     #[test]
     fn test_get_or_generate_with_preinitialized_registry() {
         let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
-        let mut registry = MockWindowsRegistry::with_value(REGISTRY_PATH, REGISTRY_KEY, uuid_str);
+        let registry = MockWindowsRegistry::with_value(REGISTRY_PATH, REGISTRY_KEY, uuid_str);
 
         // get_or_generate should return the existing ID
-        let result = crate::get_or_generate_impl(&mut registry).unwrap();
+        let result = crate::get_or_generate_impl(&registry).unwrap();
         assert_eq!(result.to_string(), uuid_str);
 
         // Verify it didn't change
