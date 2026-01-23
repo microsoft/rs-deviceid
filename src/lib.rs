@@ -53,7 +53,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn generate_id() -> DevDeviceId {
+pub(crate) fn generate_id() -> DevDeviceId {
     DevDeviceId(Uuid::new_v4())
 }
 

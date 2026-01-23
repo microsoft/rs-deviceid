@@ -9,16 +9,12 @@ const REGISTRY_KEY: &str = "deviceid";
 
 /// Trait to abstract Windows registry operations for testability
 trait WindowsRegistry {
-    /// Opens a registry key for reading, returns None if the key doesn't exist
-    fn open_read_key(&self, path: &str) -> Result<bool>;
-
-    /// Opens or creates a registry key for writing
-    fn open_create_key(&self, path: &str) -> Result<()>;
-
-    /// Gets a string value from the registry
+    /// Gets a string value from the registry at the given path and key.
+    /// Returns None if the path or key doesn't exist.
     fn get_value(&self, path: &str, key: &str) -> Result<Option<String>>;
 
-    /// Sets a string value in the registry
+    /// Sets a string value in the registry at the given path and key.
+    /// Creates the path if it doesn't exist.
     fn set_value(&self, path: &str, key: &str, value: &str) -> Result<()>;
 }
 
@@ -26,25 +22,6 @@ trait WindowsRegistry {
 struct RealWindowsRegistry;
 
 impl WindowsRegistry for RealWindowsRegistry {
-    fn open_read_key(&self, path: &str) -> Result<bool> {
-        let result = RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey_with_flags(path, KEY_WOW64_64KEY | KEY_READ);
-        match result {
-            Ok(_) => Ok(true),
-            Err(err) => match err.kind() {
-                std::io::ErrorKind::NotFound => Ok(false),
-                _ => Err(Error::StorageError(err.to_string())),
-            },
-        }
-    }
-
-    fn open_create_key(&self, path: &str) -> Result<()> {
-        RegKey::predef(HKEY_CURRENT_USER)
-            .create_subkey_with_flags(path, KEY_WOW64_64KEY | KEY_ALL_ACCESS)
-            .map(|(_, _)| ())
-            .map_err(|e| Error::StorageError(e.to_string()))
-    }
-
     fn get_value(&self, path: &str, key: &str) -> Result<Option<String>> {
         let reg_key = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey_with_flags(path, KEY_WOW64_64KEY | KEY_READ);
@@ -107,18 +84,6 @@ impl MockWindowsRegistry {
 
 #[cfg(test)]
 impl WindowsRegistry for MockWindowsRegistry {
-    fn open_read_key(&self, path: &str) -> Result<bool> {
-        let data = self.data.lock().unwrap();
-        Ok(data.contains_key(path))
-    }
-
-    fn open_create_key(&self, path: &str) -> Result<()> {
-        let mut data = self.data.lock().unwrap();
-        data.entry(path.to_string())
-            .or_insert_with(std::collections::HashMap::new);
-        Ok(())
-    }
-
     fn get_value(&self, path: &str, key: &str) -> Result<Option<String>> {
         let data = self.data.lock().unwrap();
         Ok(data.get(path).and_then(|keys| keys.get(key).cloned()))
@@ -133,11 +98,7 @@ impl WindowsRegistry for MockWindowsRegistry {
     }
 }
 
-fn retrieve_with_registry<R: WindowsRegistry>(registry: &R) -> Result<Option<DevDeviceId>> {
-    if !registry.open_read_key(REGISTRY_PATH)? {
-        return Ok(None);
-    }
-
+fn get_impl<R: WindowsRegistry>(registry: &R) -> Result<Option<DevDeviceId>> {
     match registry.get_value(REGISTRY_PATH, REGISTRY_KEY)? {
         Some(value) => {
             let uuid =
@@ -148,19 +109,25 @@ fn retrieve_with_registry<R: WindowsRegistry>(registry: &R) -> Result<Option<Dev
     }
 }
 
-fn store_with_registry<R: WindowsRegistry>(registry: &R, id: &DevDeviceId) -> Result<()> {
-    registry.open_create_key(REGISTRY_PATH)?;
-    let s = id.to_string();
-    registry.set_value(REGISTRY_PATH, REGISTRY_KEY, &s)?;
-    Ok(())
+fn get_or_generate_impl<R: WindowsRegistry>(registry: &R) -> Result<DevDeviceId> {
+    match get_impl(registry)? {
+        Some(id) => Ok(id),
+        None => {
+            let id = crate::generate_id();
+            let s = id.to_string();
+            registry.set_value(REGISTRY_PATH, REGISTRY_KEY, &s)?;
+            Ok(get_impl(registry)?.unwrap_or(id))
+        }
+    }
 }
 
 pub fn retrieve() -> Result<Option<DevDeviceId>> {
-    retrieve_with_registry(&RealWindowsRegistry)
+    get_impl(&RealWindowsRegistry)
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    store_with_registry(&RealWindowsRegistry, id)
+    let s = id.to_string();
+    RealWindowsRegistry.set_value(REGISTRY_PATH, REGISTRY_KEY, &s)
 }
 
 #[cfg(test)]
@@ -170,7 +137,7 @@ mod tests {
     #[test]
     fn test_get_returns_none_with_empty_registry() {
         let registry = MockWindowsRegistry::new();
-        let result = retrieve_with_registry(&registry).unwrap();
+        let result = get_impl(&registry).unwrap();
         assert!(result.is_none());
     }
 
@@ -179,7 +146,7 @@ mod tests {
         let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
         let registry = MockWindowsRegistry::with_value(REGISTRY_PATH, REGISTRY_KEY, uuid_str);
 
-        let result = retrieve_with_registry(&registry).unwrap();
+        let result = get_impl(&registry).unwrap();
         assert!(result.is_some());
         assert_eq!(result.unwrap().to_string(), uuid_str);
     }
@@ -188,9 +155,12 @@ mod tests {
     fn test_store_and_retrieve() {
         let registry = MockWindowsRegistry::new();
         let id = DevDeviceId(uuid::Uuid::new_v4());
+        let id_str = id.to_string();
 
-        store_with_registry(&registry, &id).unwrap();
-        let retrieved = retrieve_with_registry(&registry).unwrap();
+        registry
+            .set_value(REGISTRY_PATH, REGISTRY_KEY, &id_str)
+            .unwrap();
+        let retrieved = get_impl(&registry).unwrap();
 
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap(), id);
@@ -198,20 +168,32 @@ mod tests {
 
     #[test]
     fn test_get_or_generate_with_empty_registry() {
-        // This test simulates the behavior of get_or_generate with an empty registry
         let registry = MockWindowsRegistry::new();
 
         // First call should return None (empty registry)
-        let initial = retrieve_with_registry(&registry).unwrap();
+        let initial = get_impl(&registry).unwrap();
         assert!(initial.is_none());
 
-        // Generate and store a new ID
-        let new_id = DevDeviceId(uuid::Uuid::new_v4());
-        store_with_registry(&registry, &new_id).unwrap();
+        // get_or_generate should create and store a new ID
+        let generated = get_or_generate_impl(&registry).unwrap();
 
         // Second call should return the stored ID
-        let retrieved = retrieve_with_registry(&registry).unwrap();
+        let retrieved = get_impl(&registry).unwrap();
         assert!(retrieved.is_some());
-        assert_eq!(retrieved.unwrap(), new_id);
+        assert_eq!(retrieved.unwrap(), generated);
+    }
+
+    #[test]
+    fn test_get_or_generate_with_preinitialized_registry() {
+        let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
+        let registry = MockWindowsRegistry::with_value(REGISTRY_PATH, REGISTRY_KEY, uuid_str);
+
+        // get_or_generate should return the existing ID
+        let result = get_or_generate_impl(&registry).unwrap();
+        assert_eq!(result.to_string(), uuid_str);
+
+        // Verify it didn't change
+        let retrieved = get_impl(&registry).unwrap();
+        assert_eq!(retrieved.unwrap().to_string(), uuid_str);
     }
 }
