@@ -50,7 +50,6 @@ This crate has separate implementations for different platforms:
 - All tests must pass with `cargo test --verbose`
 - Platform-specific tests are located in the `tests/` directory
 - Tests should verify idempotency of `get_or_generate()`
-- Tests should validate UUID format correctness
 
 ## Features
 - **`serde`** (default feature): Enables serialization/deserialization of `DevDeviceId`
