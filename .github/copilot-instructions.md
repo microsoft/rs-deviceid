@@ -43,7 +43,7 @@ This crate has separate implementations for different platforms:
 - Use the custom `Error` enum defined in `lib.rs` with variants:
   - `StorageError`: For file I/O or registry errors
   - `BadUuidFormat`: For UUID parsing errors
-  - `AlreadySet`: When attempting to set an already-existing device ID
+  - `AlreadySet`: When attempting to store a device ID that already exists in storage
 - Always convert platform errors to our custom error types with context using `.map_err()`
 
 ## Testing Requirements
@@ -78,12 +78,13 @@ This crate has separate implementations for different platforms:
 
 ## Example Code Style
 ```rust
-// Good: Clear error handling with context
+// Good: Clear error handling with context (Unix example)
 pub fn retrieve() -> Result<Option<DevDeviceId>> {
     let path = path()?;
     if path.exists() {
         let data = std::fs::read(path)
             .map_err(|e| super::Error::StorageError(e.to_string()))?;
+        // Unix uses try_parse_ascii for file data
         let id = uuid::Uuid::try_parse_ascii(data.as_slice())
             .map_err(|e| super::Error::BadUuidFormat(e.to_string()))?;
         Ok(Some(DevDeviceId(id)))
