@@ -79,12 +79,11 @@ impl WindowsRegistry for RealWindowsRegistry {
 
 /// Mock implementation for testing that uses an in-memory HashMap
 #[cfg(test)]
+type RegistryData = std::collections::HashMap<String, std::collections::HashMap<String, String>>;
+
+#[cfg(test)]
 struct MockWindowsRegistry {
-    data: std::sync::Arc<
-        std::sync::Mutex<
-            std::collections::HashMap<String, std::collections::HashMap<String, String>>,
-        >,
-    >,
+    data: std::sync::Arc<std::sync::Mutex<RegistryData>>,
 }
 
 #[cfg(test)]
