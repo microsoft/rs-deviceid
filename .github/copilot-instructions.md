@@ -1,7 +1,7 @@
 # GitHub Copilot Instructions for rs-deviceid
 
 ## Project Overview
-`deviceid` is a Rust library that provides a unique device ID for a given system, based on the DevDeviceId specification. It generates or retrieves a persistent device identifier stored in platform-specific locations.
+`deviceid` is a Rust library that provides a unique device ID for a given system, based on the devDeviceId specification. It generates or retrieves a persistent device identifier stored in platform-specific locations.
 
 ## Tech Stack
 - **Language**: Rust (Edition 2024)
@@ -67,7 +67,10 @@ This crate has separate implementations for different platforms:
 ## Security Considerations
 - Device IDs are stored in user-accessible locations (not encrypted)
 - The crate assumes device ID is unlikely to be stored by multiple applications simultaneously
-- No file locking is implemented; race conditions during concurrent writes are not handled
+- **Platform behavior differences**:
+  - **Unix**: Implements file locking check - returns `AlreadySet` error when attempting to store if file already exists
+  - **Windows**: No pre-write check - will overwrite existing registry value without error
+- Race conditions during concurrent writes are not handled on either platform
 
 ## Documentation Standards
 - All public APIs must have doc comments
@@ -78,13 +81,13 @@ This crate has separate implementations for different platforms:
 
 ## Example Code Style
 ```rust
-// Good: Clear error handling with context (Unix example)
+// Good: Clear error handling with context (Unix file-based storage)
 pub fn retrieve() -> Result<Option<DevDeviceId>> {
     let path = path()?;
     if path.exists() {
         let data = std::fs::read(path)
             .map_err(|e| super::Error::StorageError(e.to_string()))?;
-        // Unix uses try_parse_ascii for file data
+        // Unix: try_parse_ascii for raw byte data from files
         let id = uuid::Uuid::try_parse_ascii(data.as_slice())
             .map_err(|e| super::Error::BadUuidFormat(e.to_string()))?;
         Ok(Some(DevDeviceId(id)))
@@ -92,6 +95,9 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
         Ok(None)
     }
 }
+
+// Good: Platform-specific parsing (Windows registry string data)
+// uuid::Uuid::try_parse(&value) for string values from Windows registry
 
 // Good: Platform-specific conditional compilation
 #[cfg(target_family = "unix")]
