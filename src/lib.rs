@@ -30,6 +30,15 @@ pub struct DevDeviceId(Uuid);
 mod unix;
 mod windows;
 
+/// Trait to abstract storage operations for device IDs
+pub trait Storage {
+    /// Retrieves a device ID from storage, returning None if it doesn't exist
+    fn retrieve(&self) -> Result<Option<DevDeviceId>>;
+
+    /// Stores a device ID to storage
+    fn store(&mut self, id: &DevDeviceId) -> Result<()>;
+}
+
 mod storage {
     #[cfg(target_family = "unix")]
     pub use super::unix::*;
@@ -55,6 +64,23 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub(crate) fn generate_id() -> DevDeviceId {
     DevDeviceId(Uuid::new_v4())
+}
+
+/// Implementation of get using a Storage trait object
+pub fn get_impl<S: Storage>(storage: &S) -> Result<Option<DevDeviceId>> {
+    storage.retrieve()
+}
+
+/// Implementation of get_or_generate using a Storage trait object
+pub fn get_or_generate_impl<S: Storage>(storage: &mut S) -> Result<DevDeviceId> {
+    match storage.retrieve()? {
+        Some(id) => Ok(id),
+        None => {
+            let id = generate_id();
+            storage.store(&id)?;
+            Ok(storage.retrieve()?.unwrap_or(id))
+        }
+    }
 }
 
 impl DevDeviceId {

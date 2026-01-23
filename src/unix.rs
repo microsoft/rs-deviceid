@@ -1,6 +1,6 @@
 #![cfg(target_family = "unix")]
 
-use crate::{DevDeviceId, Result};
+use crate::{DevDeviceId, Result, Storage};
 
 const DEV_DEVICEID_PATH: &str = "Microsoft/DeveloperTools";
 const FILENAME: &str = "deviceid";
@@ -51,28 +51,41 @@ fn path() -> Result<std::path::PathBuf> {
     Ok(path)
 }
 
-pub fn retrieve() -> Result<Option<DevDeviceId>> {
-    let path = path()?;
-    if path.exists() {
-        // TODO: don't read too much!
-        let data = std::fs::read(path).map_err(|e| super::Error::StorageError(e.to_string()))?;
-        let id = uuid::Uuid::try_parse_ascii(data.as_slice())
-            .map_err(|e| super::Error::BadUuidFormat(e.to_string()))?;
-        Ok(Some(DevDeviceId(id)))
-    } else {
-        Ok(None)
+pub struct UnixStorage;
+
+impl Storage for UnixStorage {
+    fn retrieve(&self) -> Result<Option<DevDeviceId>> {
+        let path = path()?;
+        if path.exists() {
+            // TODO: don't read too much!
+            let data =
+                std::fs::read(path).map_err(|e| super::Error::StorageError(e.to_string()))?;
+            let id = uuid::Uuid::try_parse_ascii(data.as_slice())
+                .map_err(|e| super::Error::BadUuidFormat(e.to_string()))?;
+            Ok(Some(DevDeviceId(id)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn store(&mut self, id: &DevDeviceId) -> Result<()> {
+        std::fs::create_dir_all(folder_path()?)
+            .map_err(|e| super::Error::StorageError(e.to_string()))?;
+        if !path()?.exists() {
+            let id_str = format!("{id}");
+            std::fs::write(path()?, id_str.as_bytes())
+                .map_err(|e| super::Error::StorageError(e.to_string()))?;
+            Ok(())
+        } else {
+            Err(super::Error::AlreadySet)
+        }
     }
 }
 
+pub fn retrieve() -> Result<Option<DevDeviceId>> {
+    UnixStorage.retrieve()
+}
+
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    std::fs::create_dir_all(folder_path()?)
-        .map_err(|e| super::Error::StorageError(e.to_string()))?;
-    if !path()?.exists() {
-        let id_str = format!("{id}");
-        std::fs::write(path()?, id_str.as_bytes())
-            .map_err(|e| super::Error::StorageError(e.to_string()))?;
-        Ok(())
-    } else {
-        Err(super::Error::AlreadySet)
-    }
+    UnixStorage.store(id)
 }
