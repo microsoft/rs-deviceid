@@ -10,19 +10,21 @@ const REGISTRY_KEY: &str = "deviceid";
 /// Trait to abstract Windows registry operations for testability
 trait WindowsRegistry {
     /// Gets a string value from the registry at the given path and key.
+    /// The `path` is a subkey of `HKEY_CURRENT_USER`.
     /// Returns None if the path or key doesn't exist.
-    fn get_value(&self, path: &str, key: &str) -> Result<Option<String>>;
+    fn get_hkcu_value(&self, path: &str, key: &str) -> Result<Option<String>>;
 
     /// Sets a string value in the registry at the given path and key.
+    /// The `path` is a subkey of `HKEY_CURRENT_USER`.
     /// Creates the path if it doesn't exist.
-    fn set_value(&self, path: &str, key: &str, value: &str) -> Result<()>;
+    fn set_hkcu_value(&self, path: &str, key: &str, value: &str) -> Result<()>;
 }
 
 /// Real implementation that uses the actual Windows registry via winreg crate
 struct RealWindowsRegistry;
 
 impl WindowsRegistry for RealWindowsRegistry {
-    fn get_value(&self, path: &str, key: &str) -> Result<Option<String>> {
+    fn get_hkcu_value(&self, path: &str, key: &str) -> Result<Option<String>> {
         let reg_key = RegKey::predef(HKEY_CURRENT_USER)
             .open_subkey_with_flags(path, KEY_WOW64_64KEY | KEY_READ);
 
@@ -41,7 +43,7 @@ impl WindowsRegistry for RealWindowsRegistry {
         }
     }
 
-    fn set_value(&self, path: &str, key: &str, value: &str) -> Result<()> {
+    fn set_hkcu_value(&self, path: &str, key: &str, value: &str) -> Result<()> {
         let reg_key = RegKey::predef(HKEY_CURRENT_USER)
             .create_subkey_with_flags(path, KEY_WOW64_64KEY | KEY_ALL_ACCESS)
             .map(|(k, _)| k)
@@ -84,12 +86,12 @@ impl MockWindowsRegistry {
 
 #[cfg(test)]
 impl WindowsRegistry for MockWindowsRegistry {
-    fn get_value(&self, path: &str, key: &str) -> Result<Option<String>> {
+    fn get_hkcu_value(&self, path: &str, key: &str) -> Result<Option<String>> {
         let data = self.data.lock().unwrap();
         Ok(data.get(path).and_then(|keys| keys.get(key).cloned()))
     }
 
-    fn set_value(&self, path: &str, key: &str, value: &str) -> Result<()> {
+    fn set_hkcu_value(&self, path: &str, key: &str, value: &str) -> Result<()> {
         let mut data = self.data.lock().unwrap();
         data.entry(path.to_string())
             .or_insert_with(std::collections::HashMap::new)
@@ -99,7 +101,7 @@ impl WindowsRegistry for MockWindowsRegistry {
 }
 
 fn get_impl<R: WindowsRegistry>(registry: &R) -> Result<Option<DevDeviceId>> {
-    match registry.get_value(REGISTRY_PATH, REGISTRY_KEY)? {
+    match registry.get_hkcu_value(REGISTRY_PATH, REGISTRY_KEY)? {
         Some(value) => {
             let uuid =
                 uuid::Uuid::try_parse(&value).map_err(|e| Error::BadUuidFormat(e.to_string()))?;
@@ -115,7 +117,7 @@ fn get_or_generate_impl<R: WindowsRegistry>(registry: &R) -> Result<DevDeviceId>
         None => {
             let id = crate::generate_id();
             let s = id.to_string();
-            registry.set_value(REGISTRY_PATH, REGISTRY_KEY, &s)?;
+            registry.set_hkcu_value(REGISTRY_PATH, REGISTRY_KEY, &s)?;
             Ok(get_impl(registry)?.unwrap_or(id))
         }
     }
@@ -127,7 +129,7 @@ pub fn retrieve() -> Result<Option<DevDeviceId>> {
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
     let s = id.to_string();
-    RealWindowsRegistry.set_value(REGISTRY_PATH, REGISTRY_KEY, &s)
+    RealWindowsRegistry.set_hkcu_value(REGISTRY_PATH, REGISTRY_KEY, &s)
 }
 
 #[cfg(test)]
@@ -158,7 +160,7 @@ mod tests {
         let id_str = id.to_string();
 
         registry
-            .set_value(REGISTRY_PATH, REGISTRY_KEY, &id_str)
+            .set_hkcu_value(REGISTRY_PATH, REGISTRY_KEY, &id_str)
             .unwrap();
         let retrieved = get_impl(&registry).unwrap();
 
