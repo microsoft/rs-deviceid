@@ -1,52 +1,63 @@
 #![cfg(target_family = "windows")]
 
 use crate::{DevDeviceId, Error, Result};
-use winreg::RegKey;
-use winreg::enums::{HKEY_CURRENT_USER, KEY_ALL_ACCESS, KEY_READ, KEY_WOW64_64KEY};
+use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+use windows::Win32::System::Registry::KEY_WOW64_64KEY;
+use windows_registry::{CURRENT_USER, Key, OpenOptions};
+use windows_result::HRESULT;
 
-const REGISTRY_PATH: &str = "SOFTWARE\\Microsoft\\DeveloperTools";
+const REGISTRY_PATH: &str = r"SOFTWARE\Microsoft\DeveloperTools";
 const REGISTRY_KEY: &str = "deviceid";
 
-fn open_read_key() -> Result<Option<RegKey>> {
-    let result = RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey_with_flags(REGISTRY_PATH, KEY_WOW64_64KEY | KEY_READ);
-    match result {
-        Ok(key) => Ok(Some(key)),
-        Err(err) => match err.kind() {
-            std::io::ErrorKind::NotFound => Ok(None),
-            _ => Err(Error::StorageError(err.to_string())),
-        },
+fn reg_options(create: bool) -> OpenOptions<'static> {
+    let mut options = CURRENT_USER.options();
+    options.read().access(KEY_WOW64_64KEY.0);
+    if create {
+        options.write();
+        options.create();
+    }
+    options
+}
+
+/// Maps [`ERROR_FILE_NOT_FOUND`] to Ok(None), and all other errors to [`Error::StorageError`].
+fn error_not_found_to_none<T>(err: windows_result::Error) -> Result<Option<T>> {
+    match err.code() {
+        hr if hr == HRESULT::from(ERROR_FILE_NOT_FOUND) => Ok(None),
+        _ => Err(storage_error(err)),
     }
 }
 
-fn open_create_key() -> Result<RegKey> {
-    RegKey::predef(HKEY_CURRENT_USER)
-        .create_subkey_with_flags(REGISTRY_PATH, KEY_WOW64_64KEY | KEY_ALL_ACCESS)
-        .map(|(key, _)| key)
-        .map_err(|e| Error::StorageError(e.to_string()))
+fn storage_error(err: windows_result::Error) -> Error {
+    Error::StorageError(err.to_string())
+}
+
+fn open_read_key() -> Result<Option<Key>> {
+    reg_options(false)
+        .open(REGISTRY_PATH)
+        .map(Some)
+        .or_else(error_not_found_to_none)
+}
+
+fn open_create_key() -> Result<Key> {
+    reg_options(true).open(REGISTRY_PATH).map_err(storage_error)
 }
 
 pub fn retrieve() -> Result<Option<DevDeviceId>> {
     let Some(key) = open_read_key()? else {
         return Ok(None);
     };
-    match key.get_value::<String, &str>(REGISTRY_KEY) {
-        Ok(value) => {
+    match key.get_string(REGISTRY_KEY) {
+        Ok(s) => {
             let uuid =
-                uuid::Uuid::try_parse(&value).map_err(|e| Error::BadUuidFormat(e.to_string()))?;
+                uuid::Uuid::try_parse(&s).map_err(|e| Error::BadUuidFormat(e.to_string()))?;
             Ok(Some(DevDeviceId(uuid)))
         }
-        Err(err) => match err.kind() {
-            std::io::ErrorKind::NotFound => Ok(None),
-            _ => Err(Error::StorageError(err.to_string())),
-        },
+        Err(err) => error_not_found_to_none(err),
     }
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
     let key = open_create_key()?;
     let s = id.to_string();
-    key.set_value(REGISTRY_KEY, &s)
-        .map_err(|e| Error::StorageError(e.to_string()))?;
-    Ok(())
+    key.set_string(REGISTRY_KEY, &s).map_err(storage_error)
 }
