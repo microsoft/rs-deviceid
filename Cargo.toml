@@ -2,6 +2,7 @@
 name = "deviceid"
 version = "0.0.4"
 edition = "2024"
+rust-version = "1.95"
 license = "MIT"
 description = "This package is used to help generate a unique random UUID as a deviceId."
 repository = "https://github.com/Microsoft/rs-deviceid"
@@ -14,9 +15,8 @@ thiserror = "2.0"
 uuid = { version = "1.18", features = ["v4"] }
 
 [target.'cfg(target_family = "windows")'.dependencies]
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_Registry"] }
-windows-registry = "0.6.1"
-windows-result = "0.4.1"
+windows-registry = "0.100"
+windows-result = "0.100"
 
 [features]
 default = ["serde"]

@@ -1,17 +1,14 @@
 #![cfg(target_family = "windows")]
 
 use crate::{DevDeviceId, Error, Result};
-use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
-use windows::Win32::System::Registry::KEY_WOW64_64KEY;
 use windows_registry::{CURRENT_USER, Key, OpenOptions};
-use windows_result::HRESULT;
 
 const REGISTRY_PATH: &str = r"SOFTWARE\Microsoft\DeveloperTools";
 const REGISTRY_KEY: &str = "deviceid";
 
 fn reg_options(create: bool) -> OpenOptions<'static> {
     let mut options = CURRENT_USER.options();
-    options.read().access(KEY_WOW64_64KEY.0);
+    options.read().wow64_64();
     if create {
         options.write();
         options.create();
@@ -19,11 +16,12 @@ fn reg_options(create: bool) -> OpenOptions<'static> {
     options
 }
 
-/// Maps [`ERROR_FILE_NOT_FOUND`] to Ok(None), and all other errors to [`Error::StorageError`].
+/// Maps Windows "not found" errors to `Ok(None)`, and all other errors to [`Error::StorageError`].
 fn error_not_found_to_none<T>(err: windows_result::Error) -> Result<Option<T>> {
-    match err.code() {
-        hr if hr == HRESULT::from(ERROR_FILE_NOT_FOUND) => Ok(None),
-        _ => Err(storage_error(err)),
+    if std::io::Error::from(err.clone()).kind() == std::io::ErrorKind::NotFound {
+        Ok(None)
+    } else {
+        Err(storage_error(err))
     }
 }
 
@@ -60,4 +58,31 @@ pub fn store(id: &DevDeviceId) -> Result<()> {
     let key = open_create_key()?;
     let s = id.to_string();
     key.set_string(REGISTRY_KEY, &s).map_err(storage_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_not_found_maps_to_none() {
+        let missing_path = format!(
+            r"SOFTWARE\Microsoft\DeveloperTools\deviceid-test-{}",
+            uuid::Uuid::new_v4()
+        );
+        let err = CURRENT_USER
+            .open(missing_path)
+            .expect_err("random registry path should not exist");
+        let result: Result<Option<()>> = error_not_found_to_none(err);
+
+        assert!(matches!(result, Ok(None)));
+    }
+
+    #[test]
+    fn other_windows_errors_map_to_storage_error() {
+        let err = windows_result::Error::empty();
+        let result: Result<Option<()>> = error_not_found_to_none(err);
+
+        assert!(matches!(result, Err(Error::StorageError(_))));
+    }
 }
