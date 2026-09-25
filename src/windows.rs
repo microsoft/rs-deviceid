@@ -6,6 +6,51 @@ use windows_registry::{CURRENT_USER, Key, OpenOptions};
 const REGISTRY_PATH: &str = r"SOFTWARE\Microsoft\DeveloperTools";
 const REGISTRY_KEY: &str = "deviceid";
 
+struct RegistryStorage<'a> {
+    path: &'a str,
+    value_name: &'a str,
+}
+
+impl<'a> RegistryStorage<'a> {
+    const fn new(path: &'a str, value_name: &'a str) -> Self {
+        Self { path, value_name }
+    }
+
+    fn open_read_key(&self) -> Result<Option<Key>> {
+        reg_options(false)
+            .open(self.path)
+            .map(Some)
+            .or_else(error_not_found_to_none)
+    }
+
+    fn open_create_key(&self) -> Result<Key> {
+        reg_options(true).open(self.path).map_err(storage_error)
+    }
+
+    fn retrieve(&self) -> Result<Option<DevDeviceId>> {
+        let Some(key) = self.open_read_key()? else {
+            return Ok(None);
+        };
+        match key.get_string(self.value_name) {
+            Ok(s) => {
+                let uuid =
+                    uuid::Uuid::try_parse(&s).map_err(|e| Error::BadUuidFormat(e.to_string()))?;
+                Ok(Some(DevDeviceId(uuid)))
+            }
+            Err(err) => error_not_found_to_none(err),
+        }
+    }
+
+    fn store(&self, id: &DevDeviceId) -> Result<()> {
+        let key = self.open_create_key()?;
+        let s = id.to_string();
+        key.set_string(self.value_name, &s).map_err(storage_error)
+    }
+}
+
+const PLATFORM_STORAGE: RegistryStorage<'static> =
+    RegistryStorage::new(REGISTRY_PATH, REGISTRY_KEY);
+
 fn reg_options(create: bool) -> OpenOptions<'static> {
     let mut options = CURRENT_USER.options();
     options.read().wow64_64();
@@ -29,60 +74,13 @@ fn storage_error(err: windows_result::Error) -> Error {
     Error::StorageError(err.to_string())
 }
 
-fn open_read_key() -> Result<Option<Key>> {
-    reg_options(false)
-        .open(REGISTRY_PATH)
-        .map(Some)
-        .or_else(error_not_found_to_none)
-}
-
-fn open_create_key() -> Result<Key> {
-    reg_options(true).open(REGISTRY_PATH).map_err(storage_error)
-}
-
 pub fn retrieve() -> Result<Option<DevDeviceId>> {
-    let Some(key) = open_read_key()? else {
-        return Ok(None);
-    };
-    match key.get_string(REGISTRY_KEY) {
-        Ok(s) => {
-            let uuid =
-                uuid::Uuid::try_parse(&s).map_err(|e| Error::BadUuidFormat(e.to_string()))?;
-            Ok(Some(DevDeviceId(uuid)))
-        }
-        Err(err) => error_not_found_to_none(err),
-    }
+    PLATFORM_STORAGE.retrieve()
 }
 
 pub fn store(id: &DevDeviceId) -> Result<()> {
-    let key = open_create_key()?;
-    let s = id.to_string();
-    key.set_string(REGISTRY_KEY, &s).map_err(storage_error)
+    PLATFORM_STORAGE.store(id)
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn file_not_found_maps_to_none() {
-        let missing_path = format!(
-            r"SOFTWARE\Microsoft\DeveloperTools\deviceid-test-{}",
-            uuid::Uuid::new_v4()
-        );
-        let err = CURRENT_USER
-            .open(missing_path)
-            .expect_err("random registry path should not exist");
-        let result: Result<Option<()>> = error_not_found_to_none(err);
-
-        assert!(matches!(result, Ok(None)));
-    }
-
-    #[test]
-    fn other_windows_errors_map_to_storage_error() {
-        let err = windows_result::Error::empty();
-        let result: Result<Option<()>> = error_not_found_to_none(err);
-
-        assert!(matches!(result, Err(Error::StorageError(_))));
-    }
-}
+mod tests;
