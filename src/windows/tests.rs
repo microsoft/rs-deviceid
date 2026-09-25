@@ -3,15 +3,24 @@ use super::*;
 const TEST_REGISTRY_PARENT: &str = r"SOFTWARE";
 
 struct TestRegistryGuard {
-    child_path: String,
+    path: String,
+    missing_is_expected: bool,
+}
+
+impl TestRegistryGuard {
+    fn expect_missing(&mut self) {
+        self.missing_is_expected = true;
+    }
 }
 
 impl Drop for TestRegistryGuard {
     fn drop(&mut self) {
-        let mut options = CURRENT_USER.options();
-        options.read().write().wow64_64();
-        if let Ok(parent) = options.open(TEST_REGISTRY_PARENT) {
-            _ = parent.remove_tree(&self.child_path);
+        if let Err(err) = CURRENT_USER.remove_tree(&self.path) {
+            let is_missing =
+                std::io::Error::from(err.clone()).kind() == std::io::ErrorKind::NotFound;
+            if !self.missing_is_expected || !is_missing {
+                panic!("failed to remove test registry key: {err}");
+            }
         }
     }
 }
@@ -19,12 +28,19 @@ impl Drop for TestRegistryGuard {
 fn test_storage() -> (String, TestRegistryGuard) {
     let child_path = format!("rs-deviceid-test-{}", uuid::Uuid::new_v4());
     let path = format!(r"{TEST_REGISTRY_PARENT}\{child_path}");
-    (path, TestRegistryGuard { child_path })
+    (
+        path.clone(),
+        TestRegistryGuard {
+            path,
+            missing_is_expected: false,
+        },
+    )
 }
 
 #[test]
 fn registry_storage_returns_none_when_key_is_missing() {
-    let (path, _guard) = test_storage();
+    let (path, mut guard) = test_storage();
+    guard.expect_missing();
     let storage = RegistryStorage::new(&path, REGISTRY_KEY);
 
     assert_eq!(storage.retrieve().unwrap(), None);
