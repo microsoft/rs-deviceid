@@ -1,5 +1,15 @@
 version: 2
 updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    groups:
+      cargo:
+        patterns: ["*"]
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 30
+
   - package-ecosystem: "github-actions"
     directory: "/"
     groups:
