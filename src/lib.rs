@@ -121,7 +121,8 @@ fn get_or_generate_with<S: Storage, G: IdGenerator>(
 impl DevDeviceId {
     /// Retrieves the device ID from storage or generates a new one if it doesn't exist.
     /// If an ID does not exist, a new one is generated and stored.
-    /// If the function does not return `Ok(device_id)`, the generated ID was not stored.
+    /// Storage is then read again to return the persisted ID. If this final retrieval fails,
+    /// the function returns an error even though the generated ID may have been stored.
     pub fn get_or_generate() -> Result<Self> {
         get_or_generate_with(&mut PlatformStorage, &mut UuidV4Generator)
     }
