@@ -5,12 +5,13 @@
 
 ## Tech Stack
 - **Language**: Rust (Edition 2024)
-- **Minimum Rust Version**: 1.88
+- **Minimum Rust Version**: 1.95
 - **Key Dependencies**:
   - `uuid` (v1.18) - for generating v4 UUIDs
   - `serde` (v1.0) - optional, for serialization support
   - `thiserror` (v2.0) - for error handling
-  - `winreg` (v0.55.0) - Windows-specific registry access
+  - `windows-registry` (v0.100) - Windows-specific registry access
+  - `windows-result` (v0.100) - Windows error handling
 
 ## Platform-Specific Implementation
 This crate has separate implementations for different platforms:

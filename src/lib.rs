@@ -53,29 +53,84 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn generate_id() -> DevDeviceId {
-    DevDeviceId(Uuid::new_v4())
+trait Storage {
+    fn retrieve(&mut self) -> Result<Option<DevDeviceId>>;
+    fn store(&mut self, id: &DevDeviceId) -> Result<()>;
+}
+
+struct PlatformStorage;
+
+impl Storage for PlatformStorage {
+    fn retrieve(&mut self) -> Result<Option<DevDeviceId>> {
+        storage::retrieve()
+    }
+
+    fn store(&mut self, id: &DevDeviceId) -> Result<()> {
+        storage::store(id)
+    }
+}
+
+trait IdGenerator {
+    fn generate(&mut self) -> DevDeviceId;
+}
+
+struct UuidV4Generator;
+
+impl IdGenerator for UuidV4Generator {
+    fn generate(&mut self) -> DevDeviceId {
+        DevDeviceId(Uuid::new_v4())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum InitialDecision {
+    Return(DevDeviceId),
+    Generate,
+}
+
+fn decide_initial(existing: Option<DevDeviceId>) -> InitialDecision {
+    match existing {
+        Some(id) => InitialDecision::Return(id),
+        None => InitialDecision::Generate,
+    }
+}
+
+fn decide_after_store(generated: DevDeviceId, reloaded: Option<DevDeviceId>) -> DevDeviceId {
+    reloaded.unwrap_or(generated)
+}
+
+fn get_with_storage<S: Storage>(storage: &mut S) -> Result<Option<DevDeviceId>> {
+    storage.retrieve()
+}
+
+fn get_or_generate_with<S: Storage, G: IdGenerator>(
+    storage: &mut S,
+    generator: &mut G,
+) -> Result<DevDeviceId> {
+    match decide_initial(storage.retrieve()?) {
+        InitialDecision::Return(id) => Ok(id),
+        InitialDecision::Generate => {
+            let generated = generator.generate();
+            storage.store(&generated)?;
+            let reloaded = storage.retrieve()?;
+            Ok(decide_after_store(generated, reloaded))
+        }
+    }
 }
 
 impl DevDeviceId {
     /// Retrieves the device ID from storage or generates a new one if it doesn't exist.
     /// If an ID does not exist, a new one is generated and stored.
-    /// If the function does not return `Ok(device_id)`, the generated ID was not stored.
+    /// Storage is then read again to return the persisted ID. If this final retrieval fails,
+    /// the function returns an error even though the generated ID may have been stored.
     pub fn get_or_generate() -> Result<Self> {
-        match storage::retrieve()? {
-            Some(id) => Ok(id),
-            None => {
-                let id = generate_id();
-                storage::store(&id)?;
-                Ok(storage::retrieve()?.unwrap_or(id))
-            }
-        }
+        get_or_generate_with(&mut PlatformStorage, &mut UuidV4Generator)
     }
 
     /// Retrieves the device ID from storage, returning `None` if it does not exist
     /// or an error if there was a problem retrieving it.
     pub fn get() -> Result<Option<Self>> {
-        storage::retrieve()
+        get_with_storage(&mut PlatformStorage)
     }
 }
 
@@ -86,27 +141,4 @@ impl std::fmt::Display for DevDeviceId {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_expected_format() {
-        let uuid = Uuid::new_v4();
-        let id = DevDeviceId(uuid);
-        let formatted = format!("{}", id);
-        let mut buf = vec![0u8; uuid::fmt::Hyphenated::LENGTH];
-        let hyphenated = uuid::fmt::Hyphenated::from_uuid(uuid);
-        hyphenated.encode_lower(&mut buf);
-        let expected = String::from_utf8(buf).expect("Failed to convert to String");
-        assert_eq!(formatted, expected);
-    }
-
-    #[test]
-    fn test_get_or_generate_idempotent() {
-        let id = DevDeviceId::get_or_generate().unwrap();
-        let id2 = DevDeviceId::get_or_generate().unwrap();
-        assert_eq!(id, id2);
-        let id3 = DevDeviceId::get().unwrap().unwrap();
-        assert_eq!(id, id3);
-    }
-}
+mod tests;
